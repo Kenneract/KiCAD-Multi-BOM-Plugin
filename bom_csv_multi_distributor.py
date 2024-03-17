@@ -1,0 +1,431 @@
+# Author: Kennan (Kenneract)
+# Updated: Mar.17.2024
+# API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
+PLUGIN_VERSION = "Mar.17.2024 (V1.0.0)"
+
+"""
+    @package
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.0).
+    
+    Generates multiple CSV BoM files for each component distributor you plan
+    to purchase from, based on "part number" fields on each symbol. Components
+    are sorted by REF and grouped by value & footprint fields. Components
+    without a defined distributor will be placed in an "Orphan" BoM file.
+
+    Highlights potential issues (such as doubled distributor fields and
+    inconsistent part number usage) during BoM generation, as well as saving
+    it to a report file.
+
+    If using JLCPCB part numbers, the plugin can perform a "sanity-check" of
+    values/footprints for relevant components by using the provided
+    "JLCPCB_Part_Database.csv" file (must be placed in the project directory).
+	
+    CURRENTLY SUPPORTS:
+
+    > JLCPCB
+        - "LCSC", or "LCSC Part", "JLCPCB" fields
+        - Outputs JLCPCB PCBA compatible BoM
+        - Columns: "Comment", "Designator", "Footprint", "LCSC Part #"
+
+    > Digikey
+        - "Digikey", "Digi-Key", or "Digi-Key_PN" fields
+        - Output BoM can be used with Digikey's Parts List Manager
+        - Columns: "Value", "Description", "Designator", "Footprint",
+                        "Digi-Key Part Number", "Quantity"
+	
+    Command Line:
+    python "pathToFile/bom_csv_multi_distributor.py" "%I"
+"""
+
+import kicad_netlist_reader
+import csv, sys
+from os import path
+from dataclasses import dataclass
+
+JLCPCB_PART_FILE = "JLCPCB_Part_Database.csv"
+
+JLCPCB_FIELDS = ("LCSC", "LCSC Part", "JLCPCB")
+DIGIKEY_FIELDS = ("Digikey", "Digi-Key", "Digi-Key_PN")
+
+JLCPCB_BOM_FILE = "{0}_BOM_JLCPCB.csv"
+DIGIKEY_BOM_FILE = "{0}_BOM_Digikey.csv"
+ORPHAN_BOM_FILE = "{0}_BOM_Orphaned.csv"
+REPORT_FILE = "{0}_BOM_Report.txt"
+
+
+@dataclass
+class CachedJLCPCBPart:
+    # For storing data about components found in the schematic
+    jlcpcbNum: str
+    ref: str
+    value: str
+    footprint: str
+
+
+def resolveValue(value:str):
+    """
+    Given a string with a value & units (e.g. "20mH or 3k3"),
+    resolves and returns the raw number (e.g. 0.02 or 3300).
+
+    Returns None if evaluation fails. Not particularly efficient.
+    """
+    try:
+        magnitudes = {"p":-12, "n":-9, "u":-6, "µ":-6, "m":-3, "k":3, "M":6, "G":9}
+        # Remove units
+        val = ""
+        value = value.replace(",",".") #dot for decimal place
+        for c in value:
+            if (c in magnitudes or c.isdigit() or c == "."):
+                val += c
+        
+        # Interpret magnitude
+        mag = 0
+        for c in val:
+            if c in magnitudes:
+                mag = magnitudes[c]
+                break
+
+        # Isolate raw number
+        value = ""
+        decDone = False
+        for c in val:
+            if (c.isdigit()):
+                value += c
+            elif (not decDone and (c == "." or c in magnitudes)):
+                value += "."
+                decDone = True
+        value = float(value)
+
+        # Calculate result
+        return round(value * (10**mag), 15)
+    except:
+        return None
+
+
+class JLCPCBPartData():
+    """
+    A representation of a JLCPCB part.
+    """
+    def __init__(self, partNum, type, value, footprint):
+        self.partNum = partNum
+        self.type = type
+        self.value = value
+        self.rawValue = resolveValue(value)
+        self.footprint = footprint
+
+    def getType(self):
+        return self.type
+
+    def checkMatchType(self, inType):
+        """
+        Checks if the given type matches for this part.
+
+        Performs some text processing.
+        """
+        # Process incoming type
+        cleanType = ""
+        for c in inType:
+            if (c.isalpha()):
+                cleanType += c
+        # Compare
+        return self.type.lower() == cleanType.lower()
+
+    def getValue(self):
+        return self.value
+
+    def checkMatchValue(self, inVal):
+        """
+        Checks if the given value matches for
+        this part. Performs some processing.
+        """
+        # Process incoming value
+        cleanVal = resolveValue(inVal)
+        if (cleanVal is None):
+            cleanVal = inVal
+        # Ensure have raw value
+        rawVal = self.rawValue
+        if (rawVal is None):
+            rawVal = self.value
+        # Compare
+        return str(rawVal) in str(cleanVal)
+
+    def getFootprint(self):
+        return self.footprint
+
+    def checkMatchFootprint(self, inFoot):
+        """
+        Checks if the given footprint matches for
+        this part. Not very accurate.
+
+        Performs some text processing.
+        """
+        # Process incoming footprint
+        cleanFoot = inFoot.split(":")[-1]
+        # Compare
+        return self.footprint.lower() in cleanFoot.lower()
+
+    def checkMatchCachedPart(self, part:CachedJLCPCBPart):
+        """
+        Compares this part to a given cached JLCPCB part.
+
+        Returns an empty string if part matches, returns an error
+        string if they don't match.
+        """
+        # Check matches
+        mType = self.checkMatchType(part.ref)
+        mValue = self.checkMatchValue(part.value)
+        mFoot = self.checkMatchFootprint(part.footprint)
+        # Generate output
+        if (self.type != "" and not mType):
+            return f"[{part.ref}] is expected to be type \"{self.type}\""
+        if (self.value != "" and not mValue):
+            return f"[{part.ref}]'s value is \"{part.value}\", expected \"{self.value}\""
+        if (self.footprint != "" and not mFoot):
+            return f"[{part.ref}]'s footprint is \"{part.footprint}\", expected to \"{self.footprint}\""
+        return ""
+
+
+class JLCPCBPartDatabase():
+    """
+    A database of JLCPCB parts.
+    """
+    def __init__(self, source:str):
+        """
+        Initializes the database & loads from disk.
+        """
+        self.parts = {}
+        # Load data from database
+        with open(source, "r") as file:
+            csvReader = csv.reader(file)
+            for row in csvReader:
+                pNum = row[0]
+                pType = row[1]
+                pVal = row[2]
+                pFoot = row[3]
+                part = JLCPCBPartData(pNum, pType, pVal, pFoot)
+                self.parts.update( {pNum : part} )
+
+    def getPart(self, partNum):
+        """
+        Returns the given part, if in database.
+        Returns None otherwise.
+        """
+        if (partNum in self.parts):
+            return self.parts[partNum]
+        return None
+
+
+def checkFields(component, fields:tuple, ignoreCase:bool=True):
+    """
+    Checks if the given KiCAD component has any of the
+    provided fields. If a match is found, the value
+    from the first matching field is returned. Returns
+    None if no matches found.
+
+    Can optionally ignore the case of the fields,
+    though has O(n*m) complexity.
+    """
+    if (ignoreCase):
+        # CASE-INSENSITIVE SEARCH
+        fieldNames = component.getFieldNames()
+        for compField in fieldNames:
+            for inField in fields:
+                if compField.lower() == inField.lower():
+                    return component.getField(compField)
+        return None
+    else:
+        # CASE-SENSITIVE SEARCH
+        for inField in fields:
+            val = component.getField(inField)
+            if val != "":
+                return val
+        return None
+
+
+
+# Resolve environment data
+projName = path.basename(sys.argv[1]).strip(".xml")
+projDir = path.dirname(sys.argv[1])
+jlcpcbDataFile = path.join(projDir, JLCPCB_PART_FILE)
+jlcpcbDataFilePresent = path.exists(jlcpcbDataFile)
+
+# Read KiCAD netlist
+net = kicad_netlist_reader.netlist(sys.argv[1])
+
+# Lists of rows for distributor CSV files
+jlcpcbRows = []
+digikeyRows = []
+orphanRows = []
+
+# List of warnings for report
+warnings = []
+
+# JLCPCB parts data (if caching)
+jlcpcbItems = []
+
+# Iterate through all component groups (grouped when matching Value, Library, & Footprint I think)
+for group in net.groupComponents():
+    # Dicts of {PartNum:[RefList]} for each distributor
+    jlcpcbPartRefs = {}
+    digikeyPartRefs = {}
+    orphanRefs = []
+
+    # Populate CSV rows with component details for each group
+    for component in group:
+        # Check for known fields on this component
+        comp = component
+        jlcpcbPartNum = checkFields(comp, JLCPCB_FIELDS)
+        digikeyPartNum = checkFields(comp, DIGIKEY_FIELDS)
+
+        distributors = [(jlcpcbPartNum, jlcpcbPartRefs),
+                        (digikeyPartNum, digikeyPartRefs)]
+
+        # Record REF to parts dictionary for appropriate distributor
+        orphaned = True
+        for distPartNum, distPartRefs in distributors:
+            if (distPartNum is not None):
+                # Part belongs to this distributor
+                if (not orphaned):
+                    # Already found distributor; multiple defined!
+                    msg = f"WARN: [{comp.getRef()}] has multiple distributors defined (only using first found)"
+                    warnings.append(msg)
+                    break
+                else:
+                    # Add REF to its parts dictionary
+                    if (distPartNum in distPartRefs): 
+                        distPartRefs[distPartNum].append(comp.getRef())
+                    else:
+                        distPartRefs[distPartNum] = [comp.getRef()]
+                    orphaned = False
+
+        # If no distributor found, record part as orphan
+        if (orphaned):
+            orphanRefs.append(comp.getRef())
+
+        # Cache JLCPCB Part details for later (if enabled)
+        if (jlcpcbDataFilePresent and jlcpcbPartNum is not None):
+            p = CachedJLCPCBPart(jlcpcbPartNum, comp.getRef(), comp.getValue(),
+                                comp.getFootprint().split(":")[-1])
+            jlcpcbItems.append(p)
+
+    # All components in group processed; collect group info
+    value = comp.getValue()
+    desc = comp.getDescription()
+    footprint = comp.getFootprint().split(":")[-1]
+    distributorParts = [jlcpcbPartRefs, digikeyPartRefs]
+
+    # Check for grouped (identical) parts with differing part numbers
+    for parts in distributorParts:
+        if (len(parts) > 1):
+            offenders = ["=".join(parts[pNum]) for pNum in parts]
+            msg = f"WARN: Symbols [{', '.join(offenders)}] are identical but have different part numbers"
+            warnings.append(msg)
+
+    # Generate rows for CSV BOM files
+    for jlcpcbPartNum in jlcpcbPartRefs:
+        # Comment, REFs, Footprint, JLCPCB Part #
+        jlcpcbRows.append([value+" "+desc, ",".join(jlcpcbPartRefs[jlcpcbPartNum]),
+                            footprint, jlcpcbPartNum])
+    for digikeyPartNum in digikeyPartRefs:
+        # Value, Description, REFs, Footprint, Digi-Key Part Number, Quantity
+        digikeyRows.append([value, desc, ",".join(digikeyPartRefs[digikeyPartNum]),
+                            footprint, digikeyPartNum, len(digikeyPartRefs[digikeyPartNum])])
+    if (len(orphanRefs) > 0):
+        # Comment, REFs, Footprint
+        orphanRows.append([value+" "+desc, ",".join(orphanRefs), footprint])
+
+
+# Write row data to CSV BOM files
+jlcpcbFile = path.join(projDir, JLCPCB_BOM_FILE.format(projName))
+digikeyFile = path.join(projDir, DIGIKEY_BOM_FILE.format(projName))
+orphanFile = path.join(projDir, ORPHAN_BOM_FILE.format(projName))
+# JLCPCB
+if (len(jlcpcbRows) > 0):
+    with open(jlcpcbFile, "w", newline="") as f:
+        out = csv.writer(f)
+        out.writerow(["Comment", "Designator", "Footprint", "LCSC Part #"])
+        for row in jlcpcbRows:
+            out.writerow(row)
+# Digikey
+if (len(digikeyRows) > 0):
+    with open(digikeyFile, "w", newline="") as f:
+        out = csv.writer(f)
+        out.writerow(["Value", "Description", "Designator", "Footprint", "Digi-Key Part Number", "Quantity"])
+        for row in digikeyRows:
+            out.writerow(row)
+# Orphans
+if (len(orphanRows) > 0):
+    with open(orphanFile, "w", newline="") as f:
+        out = csv.writer(f)
+        out.writerow(["Comment", "Designator", "Footprint"])
+        for row in orphanRows:
+            out.writerow(row)
+
+# Run JLCPCB Parts Sanity-Check
+jlcpcbSanityNotes = []
+jlcpcbSanityMissing = []
+numPass = 0
+numFail = 0
+numUkn = 0
+if (jlcpcbDataFilePresent and len(jlcpcbRows)>0):
+    # Load parts database
+    db = JLCPCBPartDatabase(jlcpcbDataFile)
+
+    # Iterate through all parts
+    for jlcpcbPart in jlcpcbItems:
+        # Get part from JLCPCB database
+        part = db.getPart(jlcpcbPart.jlcpcbNum)
+        if (part is None):
+            numUkn += 1
+            jlcpcbSanityMissing.append(f"{jlcpcbPart.jlcpcbNum} ({jlcpcbPart.ref}) not in database")
+            continue
+        # Check if database part matches the schematic
+        res = part.checkMatchCachedPart(jlcpcbPart)
+        if (res == ""):
+            numPass += 1
+            continue
+        else:
+            numFail += 1
+            jlcpcbSanityNotes.append(res)
+
+
+# Generate report
+reportLines = []
+reportLines.append("# Multi-Distributor BoM Report #\n")
+reportLines.append(f"Project Name: {projName} (has {len(net.components)} symbols)")
+reportLines.append(f"Report Generated: {net.getDate()}")
+reportLines.append(f"Plugin Version: {PLUGIN_VERSION}\n")
+reportLines.append("- "*25 + "\n")
+
+reportLines.append(f"JLCPCB BoM: {len(jlcpcbRows)>0} ({len(jlcpcbRows)} rows)")
+reportLines.append(f"Digikey BoM: {len(digikeyRows)>0} ({len(digikeyRows)} rows)")
+reportLines.append(f"Orphaned BoM: {len(orphanRows)>0} ({len(orphanRows)} rows)\n")
+reportLines.append("- "*25 + "\n")
+
+reportLines.append("BoM Generation Notes:")
+if (len(warnings) == 0):
+    reportLines.append("(none)")
+else:
+    reportLines.append("\n".join([f"- {t}" for t in warnings]))
+reportLines.append("")
+reportLines.append("- "*25 + "\n")
+
+reportLines.append(f"JLCPCB Parts Database File Present: {jlcpcbDataFilePresent}")
+
+if (jlcpcbDataFilePresent):
+    with open(JLCPCB_PART_FILE, "r") as f:
+        numItem = f.read().count("\n")
+        reportLines[-1] += f" ({numItem} parts)"
+    reportLines.append(f"JLCPCB Parts Sanity-Checker ({numPass} pass, {numFail} suspect, {numUkn} not in database):")
+    reportLines.append("\n".join([f"- {t}" for t in jlcpcbSanityNotes+jlcpcbSanityMissing]))
+else:
+    reportLines.append(f"Place the \"{JLCPCB_PART_FILE}\" file in your project directory to use this feature.")
+
+# Write report to disk
+reportFile = path.join(projDir, REPORT_FILE.format(projName))
+with open(reportFile, "w") as f:
+    f.write("\n".join(reportLines))
+
+# Print output
+print(f"\nDONE - printing \"{REPORT_FILE.format(projName)}\" to console:\n")
+print("\n".join(reportLines))

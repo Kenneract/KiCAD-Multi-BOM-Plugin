@@ -60,7 +60,7 @@ The plugin requires the KiCAD Netlist Reader module. This should be installed wi
 
 Your Bill of Materials window should now look something like this:
 
-<img src="img/installation.png" width=25%>
+<img src="img/installation.png" width=350px>
 
 ## Usage
 

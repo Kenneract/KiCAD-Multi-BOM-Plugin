@@ -41,7 +41,7 @@ The project was inspired by [Wokwi's JLCPCB BoM Plugin](https://github.com/wokwi
 
 ## Installation
 
-This plugin has been verified with KiCAD 7.0, Python 3.8, and Windows 10. It should theoretically work cross-platform with Python 3.7 and above.
+This plugin has been verified with KiCAD 7.0, Python 3.8, and Windows 10. It has also been tested on MacOS 13.4 with Python 3.11. It should theoretically work cross-platform with Python 3.7 and above.
 
 The plugin requires the KiCAD Netlist Reader module. This should be installed with KiCAD, but if for some reason it isn't working properly you can manually download it from the [KiCAD GitHub Repository](https://github.com/KiCad/kicad-source-mirror/blob/master/eeschema/python_scripts/kicad_netlist_reader.py) and place it alongside the plugin file.
 
@@ -154,3 +154,4 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 - Improve footprint comparisons for JLCPCB sanity-check feature
 - Improve formatting and adherence to PEP8
 - Consider respecting the second "output" argument from KiCAD
+- Consider moving the JLCPB Part Database to the same directory as the plugin (much easier if working on multiple projects)

@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
 # Updated: Mar.17.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Mar.17.2024 (V1.0.0)"
+PLUGIN_VERSION = "Mar.17.2024 (V1.0.1)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.0).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.1).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -413,7 +413,7 @@ reportLines.append("- "*25 + "\n")
 reportLines.append(f"JLCPCB Parts Database File Present: {jlcpcbDataFilePresent}")
 
 if (jlcpcbDataFilePresent):
-    with open(JLCPCB_PART_FILE, "r") as f:
+    with open(jlcpcbDataFile, "r") as f:
         numItem = f.read().count("\n")
         reportLines[-1] += f" ({numItem} parts)"
     reportLines.append(f"JLCPCB Parts Sanity-Checker ({numPass} pass, {numFail} suspect, {numUkn} not in database):")

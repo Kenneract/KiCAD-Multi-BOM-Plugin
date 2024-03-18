@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
-# Updated: Mar.17.2024
+# Updated: Mar.18.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Mar.17.2024 (V1.0.1)"
+PLUGIN_VERSION = "Mar.18.2024 (V1.0.2)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.1).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.2).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -106,12 +106,13 @@ class JLCPCBPartData():
     """
     A representation of a JLCPCB part.
     """
-    def __init__(self, partNum, type, value, footprint):
+    def __init__(self, partNum, type, value, footprint, added:int):
         self.partNum = partNum
         self.type = type
         self.value = value
         self.rawValue = resolveValue(value)
         self.footprint = footprint
+        self.added = added
 
     def getType(self):
         return self.type
@@ -161,8 +162,11 @@ class JLCPCBPartData():
         """
         # Process incoming footprint
         cleanFoot = inFoot.split(":")[-1]
+        # Remove special chars
+        cleanFoot = cleanFoot.replace("-","").lower()
+        selfFoot = self.footprint.replace("-","").lower()
         # Compare
-        return self.footprint.lower() in cleanFoot.lower()
+        return selfFoot in cleanFoot
 
     def checkMatchCachedPart(self, part:CachedJLCPCBPart):
         """
@@ -184,6 +188,14 @@ class JLCPCBPartData():
             return f"[{part.ref}]'s footprint is \"{part.footprint}\", expected to \"{self.footprint}\""
         return ""
 
+    def getDateAdded(self):
+        """
+        Returns the date this part was added to the database.
+
+        Returns integer of form YYYYMMDD. Returns None if undefined.
+        """
+        return self.added
+
 
 class JLCPCBPartDatabase():
     """
@@ -194,16 +206,49 @@ class JLCPCBPartDatabase():
         Initializes the database & loads from disk.
         """
         self.parts = {}
+        self.lastUpdate = 0 # YYYYMMDD of last update
         # Load data from database
         with open(source, "r") as file:
             csvReader = csv.reader(file)
-            for row in csvReader:
+            for row in list(csvReader)[1:]: #ignore first row
+                # Pull data from row
                 pNum = row[0]
                 pType = row[1]
                 pVal = row[2]
                 pFoot = row[3]
-                part = JLCPCBPartData(pNum, pType, pVal, pFoot)
+                pAdded = None
+                if (len(row) > 6):
+                    pAdded = row[6]
+                if (pAdded is not None and len(pAdded)>0):
+                    pAdded = int(pAdded)
+                    self.lastUpdate = max(self.lastUpdate, pAdded)
+                # Create JLCPCB Part & added to parts list
+                part = JLCPCBPartData(pNum, pType, pVal, pFoot, pAdded)
                 self.parts.update( {pNum : part} )
+
+    def getNumItem(self):
+        """
+        Returns the number of parts in database
+        """
+        return len(self.parts)
+
+    def getLastUpdate(self, string:bool=False):
+        """
+        Returns the date the database file was last updated.
+
+        Returns as integer of form YYYYMMDD (pretty=False) or
+        a String of form "YYYY.MM.DD"
+        """
+        if (string):
+            if (len(str(self.lastUpdate)) != 8):
+                return "?"
+            else:
+                y = str(self.lastUpdate)[0:4]
+                m = str(self.lastUpdate)[4:6]
+                d = str(self.lastUpdate)[6:]
+                return f"{y}.{m}.{d}"
+        else:
+            return self.lastUpdate
 
     def getPart(self, partNum):
         """
@@ -247,7 +292,11 @@ def checkFields(component, fields:tuple, ignoreCase:bool=True):
 projName = path.basename(sys.argv[1]).strip(".xml")
 projDir = path.dirname(sys.argv[1])
 jlcpcbDataFile = path.join(projDir, JLCPCB_PART_FILE)
-jlcpcbDataFilePresent = path.exists(jlcpcbDataFile)
+
+# Load JLCPCB database
+jlcDB = None
+if path.exists(jlcpcbDataFile):
+    jlcDB = JLCPCBPartDatabase(jlcpcbDataFile)
 
 # Read KiCAD netlist
 net = kicad_netlist_reader.netlist(sys.argv[1])
@@ -303,7 +352,7 @@ for group in net.groupComponents():
             orphanRefs.append(comp.getRef())
 
         # Cache JLCPCB Part details for later (if enabled)
-        if (jlcpcbDataFilePresent and jlcpcbPartNum is not None):
+        if (jlcDB is not None and jlcpcbPartNum is not None):
             p = CachedJLCPCBPart(jlcpcbPartNum, comp.getRef(), comp.getValue(),
                                 comp.getFootprint().split(":")[-1])
             jlcpcbItems.append(p)
@@ -367,7 +416,7 @@ jlcpcbSanityMissing = []
 numPass = 0
 numFail = 0
 numUkn = 0
-if (jlcpcbDataFilePresent and len(jlcpcbRows)>0):
+if (jlcDB is not None and len(jlcpcbRows)>0):
     # Load parts database
     db = JLCPCBPartDatabase(jlcpcbDataFile)
 
@@ -410,14 +459,17 @@ else:
 reportLines.append("")
 reportLines.append("- "*25 + "\n")
 
-reportLines.append(f"JLCPCB Parts Database File Present: {jlcpcbDataFilePresent}")
+reportLines.append(f"JLCPCB Parts Database File Present: {jlcDB is not None}")
 
-if (jlcpcbDataFilePresent):
-    with open(jlcpcbDataFile, "r") as f:
-        numItem = f.read().count("\n")
-        reportLines[-1] += f" ({numItem} parts)"
-    reportLines.append(f"JLCPCB Parts Sanity-Checker ({numPass} pass, {numFail} suspect, {numUkn} not in database):")
-    reportLines.append("\n".join([f"- {t}" for t in jlcpcbSanityNotes+jlcpcbSanityMissing]))
+if (jlcDB is not None):
+    reportLines[-1] += f" ({jlcDB.getNumItem()} parts, updated {jlcDB.getLastUpdate(string=True)})"
+    reportLines.append("JLCPCB Parts Sanity-Checker Results ")
+    reportLines[-1] += f"({numPass} pass, {numFail} suspect, {numUkn} not in database):"
+    sanityMsgs = jlcpcbSanityNotes+jlcpcbSanityMissing
+    if (len(sanityMsgs) == 0):
+        reportLines.append("(no notes)")
+    else:
+        reportLines.append("\n".join([f"- {t}" for t in sanityMsgs]))
 else:
     reportLines.append(f"Place the \"{JLCPCB_PART_FILE}\" file in your project directory to use this feature.")
 

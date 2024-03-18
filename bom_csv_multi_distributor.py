@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
 # Updated: Mar.18.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Mar.18.2024 (V1.0.2)"
+PLUGIN_VERSION = "Mar.18.2024 (V1.0.3)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.2).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.3).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -106,13 +106,13 @@ class JLCPCBPartData():
     """
     A representation of a JLCPCB part.
     """
-    def __init__(self, partNum, type, value, footprint, added:int):
+    def __init__(self, partNum, type, value, footprint, edited:int):
         self.partNum = partNum
         self.type = type
         self.value = value
         self.rawValue = resolveValue(value)
         self.footprint = footprint
-        self.added = added
+        self.edited = edited
 
     def getType(self):
         return self.type
@@ -188,13 +188,13 @@ class JLCPCBPartData():
             return f"[{part.ref}]'s footprint is \"{part.footprint}\", expected to \"{self.footprint}\""
         return ""
 
-    def getDateAdded(self):
+    def getDateEdited(self):
         """
-        Returns the date this part was added to the database.
+        Returns the date this part was edited in the database.
 
         Returns integer of form YYYYMMDD. Returns None if undefined.
         """
-        return self.added
+        return self.edited
 
 
 class JLCPCBPartDatabase():
@@ -209,21 +209,21 @@ class JLCPCBPartDatabase():
         self.lastUpdate = 0 # YYYYMMDD of last update
         # Load data from database
         with open(source, "r") as file:
-            csvReader = csv.reader(file)
-            for row in list(csvReader)[1:]: #ignore first row
+            csvReader = csv.DictReader(file)
+            for row in csvReader:
                 # Pull data from row
-                pNum = row[0]
-                pType = row[1]
-                pVal = row[2]
-                pFoot = row[3]
-                pAdded = None
-                if (len(row) > 6):
-                    pAdded = row[6]
-                if (pAdded is not None and len(pAdded)>0):
-                    pAdded = int(pAdded)
-                    self.lastUpdate = max(self.lastUpdate, pAdded)
-                # Create JLCPCB Part & added to parts list
-                part = JLCPCBPartData(pNum, pType, pVal, pFoot, pAdded)
+                pNum = row["Number"]
+                pType = row["Type"]
+                pVal = row["Value"]
+                pFoot = row["Footprint"]
+                pEdited = None
+                if ("Edited" in row):
+                    pEdited = row["Edited"]
+                if (pEdited is not None and len(pEdited)>0):
+                    pEdited = int(pEdited)
+                    self.lastUpdate = max(self.lastUpdate, pEdited)
+                # Create JLCPCB Part & add to parts list
+                part = JLCPCBPartData(pNum, pType, pVal, pFoot, pEdited)
                 self.parts.update( {pNum : part} )
 
     def getNumItem(self):

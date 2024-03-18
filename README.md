@@ -152,6 +152,12 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 - Add more distributors (e.g. Mouser)
 - Further develop the JLCPCB Parts Database file
 - Improve footprint comparisons for JLCPCB sanity-check feature
+	- This should include footprint aliases (SMC == DO-214AA, DPAK == TO-252-2, or SOT23 == TO236, SOIC16 == SOP16)
+	- Should also include variant handling (e.g. SOT23 = SOT-23 < SOT23-3)
+- Improve model-value comparisons for JLCPCB sanity-check feature
+	- Ignore spaces,periods,dashes,commas,underscores & case when comparing
+	- Maybe just ignore all non alphanumeric characters
+	- E.g. AMS1117-3.3 == AMS1117, B5819WSL == B5819W SL
 - Improve formatting and adherence to PEP8
 - Consider respecting the second "output" argument from KiCAD
 - Consider moving the JLCPB Part Database to the same directory as the plugin (much easier if working on multiple projects)

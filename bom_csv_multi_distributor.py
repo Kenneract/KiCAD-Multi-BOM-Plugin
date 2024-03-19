@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
-# Updated: Mar.18.2024
+# Updated: Mar.19.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Mar.18.2024 (V1.0.3)"
+PLUGIN_VERSION = "Mar.19.2024 (V1.0.4)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.3).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.4).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -18,7 +18,7 @@ PLUGIN_VERSION = "Mar.18.2024 (V1.0.3)"
 
     If using JLCPCB part numbers, the plugin can perform a "sanity-check" of
     values/footprints for relevant components by using the provided
-    "JLCPCB_Part_Database.csv" file (must be placed in the project directory).
+    "JLCPCB_Part_Database.csv" file (must be placed in your plugin directory).
 	
     CURRENTLY SUPPORTS:
 
@@ -185,7 +185,7 @@ class JLCPCBPartData():
         if (self.value != "" and not mValue):
             return f"[{part.ref}]'s value is \"{part.value}\", expected \"{self.value}\""
         if (self.footprint != "" and not mFoot):
-            return f"[{part.ref}]'s footprint is \"{part.footprint}\", expected to \"{self.footprint}\""
+            return f"[{part.ref}]'s footprint is \"{part.footprint}\", expected \"{self.footprint}\""
         return ""
 
     def getDateEdited(self):
@@ -291,7 +291,8 @@ def checkFields(component, fields:tuple, ignoreCase:bool=True):
 # Resolve environment data
 projName = path.basename(sys.argv[1]).strip(".xml")
 projDir = path.dirname(sys.argv[1])
-jlcpcbDataFile = path.join(projDir, JLCPCB_PART_FILE)
+pluginDir = path.dirname(path.abspath(__file__))
+jlcpcbDataFile = path.join(pluginDir, JLCPCB_PART_FILE)
 
 # Load JLCPCB database
 jlcDB = None
@@ -471,7 +472,8 @@ if (jlcDB is not None):
     else:
         reportLines.append("\n".join([f"- {t}" for t in sanityMsgs]))
 else:
-    reportLines.append(f"Place the \"{JLCPCB_PART_FILE}\" file in your project directory to use this feature.")
+    reportLines.append(f"Place the \"{JLCPCB_PART_FILE}\" file in your plugin directory to use this feature.")
+    reportLines.append(f"\t({pluginDir})")
 
 # Write report to disk
 reportFile = path.join(projDir, REPORT_FILE.format(projName))

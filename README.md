@@ -32,23 +32,23 @@ The project was inspired by [Wokwi's JLCPCB BoM Plugin](https://github.com/wokwi
 	- Columns: `"Value", "Description", "Designator", "Footprint", "Digi-Key Part Number", "Quantity"`
 - Adds components without distributors to an "Orphan" BoM file for manual review
 	- Columns: `"Comment", "Designator", "Footprint"`
-- Automatically decides which BoM files to generate based on what parts numbers are present
+- Automatically decides which BoM files to generate based on what part numbers are present
 - Highlights potential errors (such as doubled distributor fields or inconsistent part numbers) during BoM generation
 - Details of BoM generation are also logged to a report `txt` file
 - Can perform a "sanity check" of values/footprints for some JLCPCB parts
-	- Requires the "JLCPCB_Part_Database.csv" file to be placed in project directory
+	- Requires the "JLCPCB_Part_Database.csv" file to be placed in plugin directory
 
 
 ## Installation
 
-This plugin has been verified with KiCAD 7.0, Python 3.8, and Windows 10. It has also been tested on MacOS 13.4 with Python 3.11. It should theoretically work cross-platform with Python 3.7 and above.
+This plugin has been verified with KiCAD 7.0, Python 3.8, and Windows 10 (V1.0.4). It has also been tested on MacOS 13.4 with Python 3.11 (V1.0.3). It should theoretically work cross-platform with Python 3.7 and above.
 
 The plugin requires the KiCAD Netlist Reader module. This should be installed with KiCAD, but if for some reason it isn't working properly you can manually download it from the [KiCAD GitHub Repository](https://github.com/KiCad/kicad-source-mirror/blob/master/eeschema/python_scripts/kicad_netlist_reader.py) and place it alongside the plugin file.
 
 ### Installation
 1. Download and place the `bom_csv_multi_distributor.py` file in your KiCAD plugin directory
 	- On Windows this is under `.\Documents\KiCAD\7.0\plugins`
-2. (Optional) Download and place the `JLCPCB_Part_Database.csv` file in your current KiCAD project folder
+2. (Optional) Download and place the `JLCPCB_Part_Database.csv` file in your KiCAD plugin directory
 3. Open the KiCAD Schematic Editor
 4. From the "Tools" dropdown select "Generate BOM"
 5. At the bottom left, press the "+" button
@@ -102,7 +102,7 @@ In addition to the report, at least one CSV BoM file should have been created ba
 
 ### JLCPCB Sanity Checker
 
-If you're using JLCPCB components and have placed the `JLCPCB_Part_Database.csv` file in your project directory, the report file should also contain a JLCPCB "sanity check" at the bottom. This simply compares details of symbols with LCSC part numbers to known-details in the parts database, highlighting any discrepencies. Below is the meaning of the categories:
+If you're using JLCPCB components and have placed the `JLCPCB_Part_Database.csv` file in your KiCAD plugin directory, the report file should also contain a JLCPCB "sanity check" at the bottom. This simply compares details of symbols with LCSC part numbers to known-details in the parts database, highlighting any discrepencies. Below is the meaning of the categories:
 
 - "PASS" means a symbol reasonably matches the part definitions
 	- Symbols that pass are not listed in the report
@@ -148,16 +148,14 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 
 
 ## Future Plans
-- Add a field named "BOM_Ignore" that, when enabled, causes the plugin to completely ignore the symbol
 - Add more distributors (e.g. Mouser)
 - Further develop the JLCPCB Parts Database file
 - Improve footprint comparisons for JLCPCB sanity-check feature
-	- This should include footprint aliases (SMC == DO-214AA, DPAK == TO-252-2, or SOT23 == TO236, SOIC16 == SOP16)
-	- Should also include variant handling (e.g. SOT23 = SOT-23 < SOT23-3)
+	- This should include footprint aliases (SMC == DO-214AA, DPAK == TO-252-2, SOT23 == TO236, SOIC16 == SOP16)
+	- Should also include variant handling (e.g. SOT23 = SOT-23 == SOT23-3 != SOT23-5)
 - Improve model-value comparisons for JLCPCB sanity-check feature
 	- Ignore spaces,periods,dashes,commas,underscores & case when comparing
 	- Maybe just ignore all non alphanumeric characters
 	- E.g. AMS1117-3.3 == AMS1117, B5819WSL == B5819W SL
-- Improve formatting and adherence to PEP8
+- Improve code formatting and adherence to PEP8
 - Consider respecting the second "output" argument from KiCAD
-- Consider moving the JLCPB Part Database to the same directory as the plugin (much easier if working on multiple projects)

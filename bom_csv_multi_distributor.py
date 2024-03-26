@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
-# Updated: Mar.19.2024
+# Updated: Mar.26.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Mar.19.2024 (V1.0.4)"
+PLUGIN_VERSION = "Mar.26.2024 (V1.0.5)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.4).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.5).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -30,8 +30,8 @@ PLUGIN_VERSION = "Mar.19.2024 (V1.0.4)"
     > Digikey
         - "Digikey", "Digi-Key", or "Digi-Key_PN" fields
         - Output BoM can be used with Digikey's Parts List Manager
-        - Columns: "Value", "Description", "Designator", "Footprint",
-                        "Digi-Key Part Number", "Quantity"
+        - Columns: "Customer Reference", "Note", "Reference Designator",
+                    "Footprint", "Digi-Key Part Number", "Quantity"
 	
     Command Line:
     python "pathToFile/bom_csv_multi_distributor.py" "%I"
@@ -276,12 +276,12 @@ def checkFields(component, fields:tuple, ignoreCase:bool=True):
         for compField in fieldNames:
             for inField in fields:
                 if compField.lower() == inField.lower():
-                    return component.getField(compField)
+                    return component.getField(compField).strip()
         return None
     else:
         # CASE-SENSITIVE SEARCH
         for inField in fields:
-            val = component.getField(inField)
+            val = component.getField(inField).strip()
             if val != "":
                 return val
         return None
@@ -400,7 +400,8 @@ if (len(jlcpcbRows) > 0):
 if (len(digikeyRows) > 0):
     with open(digikeyFile, "w", newline="") as f:
         out = csv.writer(f)
-        out.writerow(["Value", "Description", "Designator", "Footprint", "Digi-Key Part Number", "Quantity"])
+        out.writerow(["Customer Reference", "Note", "Reference Designator", "Footprint",
+                        "Digi-Key Part Number", "Quantity"])
         for row in digikeyRows:
             out.writerow(row)
 # Orphans

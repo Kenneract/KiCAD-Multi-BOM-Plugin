@@ -29,7 +29,7 @@ The project was inspired by [Wokwi's JLCPCB BoM Plugin](https://github.com/wokwi
 - Can generate a CSV BoM file for JLCPCB's PCB Assembly service (LCSC parts)
 	- Columns: `"Comment", "Designator", "Footprint", "LCSC Part #"`
 - Can generate a CSV BoM file that can be used with Digikey's Parts List Manager
-	- Columns: `"Value", "Description", "Designator", "Footprint", "Digi-Key Part Number", "Quantity"`
+	- Columns: `"Customer Reference", "Note", "Reference Designator", "Footprint", "Digi-Key Part Number", "Quantity"`
 - Adds components without distributors to an "Orphan" BoM file for manual review
 	- Columns: `"Comment", "Designator", "Footprint"`
 - Automatically decides which BoM files to generate based on what part numbers are present
@@ -159,3 +159,6 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 	- E.g. AMS1117-3.3 == AMS1117, B5819WSL == B5819W SL
 - Improve code formatting and adherence to PEP8
 - Consider respecting the second "output" argument from KiCAD
+- Add a JLCPCB Parts basic part suggestion check
+	- Can be disabled internally using a bool
+	- For non-basic parts, check if a basic part with an equal value+footprint is available

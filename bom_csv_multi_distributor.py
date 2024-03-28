@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
-# Updated: Mar.26.2024
+# Updated: Mar.28.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Mar.26.2024 (V1.0.5)"
+PLUGIN_VERSION = "Mar.28.2024 (V1.0.6)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.5).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.6).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -39,7 +39,7 @@ PLUGIN_VERSION = "Mar.26.2024 (V1.0.5)"
 
 import kicad_netlist_reader
 import csv, sys
-from os import path
+from os import path, remove
 from dataclasses import dataclass
 
 JLCPCB_PART_FILE = "JLCPCB_Part_Database.csv"
@@ -60,7 +60,6 @@ class CachedJLCPCBPart:
     ref: str
     value: str
     footprint: str
-
 
 def resolveValue(value:str):
     """
@@ -286,6 +285,14 @@ def checkFields(component, fields:tuple, ignoreCase:bool=True):
                 return val
         return None
 
+def deleteFile(file:str):
+    """
+    Attempts to delete the given file.
+    """
+    try:
+        remove(file)
+    except FileNotFoundError:
+        pass
 
 
 # Resolve environment data
@@ -293,6 +300,16 @@ projName = path.basename(sys.argv[1]).strip(".xml")
 projDir = path.dirname(sys.argv[1])
 pluginDir = path.dirname(path.abspath(__file__))
 jlcpcbDataFile = path.join(pluginDir, JLCPCB_PART_FILE)
+
+# Delete existing BoM / report files
+reportFile = path.join(projDir, REPORT_FILE.format(projName))
+jlcpcbFile = path.join(projDir, JLCPCB_BOM_FILE.format(projName))
+digikeyFile = path.join(projDir, DIGIKEY_BOM_FILE.format(projName))
+orphanFile = path.join(projDir, ORPHAN_BOM_FILE.format(projName))
+deleteFile(reportFile)
+deleteFile(jlcpcbFile)
+deleteFile(digikeyFile)
+deleteFile(orphanFile)
 
 # Load JLCPCB database
 jlcDB = None
@@ -386,9 +403,7 @@ for group in net.groupComponents():
 
 
 # Write row data to CSV BOM files
-jlcpcbFile = path.join(projDir, JLCPCB_BOM_FILE.format(projName))
-digikeyFile = path.join(projDir, DIGIKEY_BOM_FILE.format(projName))
-orphanFile = path.join(projDir, ORPHAN_BOM_FILE.format(projName))
+
 # JLCPCB
 if (len(jlcpcbRows) > 0):
     with open(jlcpcbFile, "w", newline="") as f:
@@ -442,15 +457,23 @@ if (jlcDB is not None and len(jlcpcbRows)>0):
 
 # Generate report
 reportLines = []
+kVer = net.getTool().split(" ")[-1]
+pVer = sys.version_info
+pVer = f"{pVer.major}.{pVer.minor}.{pVer.micro}"
+
 reportLines.append("# Multi-Distributor BoM Report #\n")
 reportLines.append(f"Project Name: {projName} (has {len(net.components)} symbols)")
+reportLines.append(f"KiCad Version: {kVer} (Python {pVer})")
 reportLines.append(f"Report Generated: {net.getDate()}")
 reportLines.append(f"Plugin Version: {PLUGIN_VERSION}\n")
 reportLines.append("- "*25 + "\n")
 
-reportLines.append(f"JLCPCB BoM: {len(jlcpcbRows)>0} ({len(jlcpcbRows)} rows)")
-reportLines.append(f"Digikey BoM: {len(digikeyRows)>0} ({len(digikeyRows)} rows)")
-reportLines.append(f"Orphaned BoM: {len(orphanRows)>0} ({len(orphanRows)} rows)\n")
+distribData = [("JLCPCB",jlcpcbRows), ("Digikey",digikeyRows),
+                ("Orphaned",orphanRows)]
+for (name, rows) in distribData:
+    reportLines.append(f"{name} BoM: {len(rows)>0}")
+    if (len(rows)>0): reportLines[-1] += f" ({len(rows)} rows)"
+reportLines.append("") #newline
 reportLines.append("- "*25 + "\n")
 
 reportLines.append("BoM Generation Notes:")
@@ -477,7 +500,6 @@ else:
     reportLines.append(f"\t({pluginDir})")
 
 # Write report to disk
-reportFile = path.join(projDir, REPORT_FILE.format(projName))
 with open(reportFile, "w") as f:
     f.write("\n".join(reportLines))
 

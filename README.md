@@ -41,11 +41,12 @@ The project was inspired by [Wokwi's JLCPCB BoM Plugin](https://github.com/wokwi
 
 ## Installation
 
-This plugin has been verified with KiCAD 7.0, Python 3.8, and Windows 10 (V1.0.4). It has also been tested on MacOS 13.4 with Python 3.11 (V1.0.3). It should theoretically work cross-platform with Python 3.7 and above.
+This plugin has been verified to work with KiCAD 7.0.8 (Python 3.9.16) on Windows 10 (V1.0.6) and MacOS 13.4 (V1.0.3). It should theoretically work cross-platform with Python 3.7 and above.
 
-The plugin requires the KiCAD Netlist Reader module. This should be installed with KiCAD, but if for some reason it isn't working properly you can manually download it from the [KiCAD GitHub Repository](https://github.com/KiCad/kicad-source-mirror/blob/master/eeschema/python_scripts/kicad_netlist_reader.py) and place it alongside the plugin file.
+The plugin requires the [KiCAD Netlist Reader module](https://pypi.org/project/kicad-netlist-reader/). This should be installed with KiCAD, but if for some reason it isn't you can launch the "KiCAD Command Prompt" as administrator (located at `/KiCad/7.0/bin/kicad-cmd.bat` on Windows), then invoke `pip install kicad-netlist-reader` to install the module in your KiCAD environment. Alternatively you can manually download the file from the [KiCAD GitHub Repository](https://github.com/KiCad/kicad-source-mirror/blob/master/eeschema/python_scripts/kicad_netlist_reader.py) and place it alongside the plugin file.
 
-### Installation
+
+### Installation Steps
 1. Download and place the `bom_csv_multi_distributor.py` file in your KiCAD plugin directory
 	- On Windows this is under `.\Documents\KiCAD\7.0\plugins`
 2. (Optional) Download and place the `JLCPCB_Part_Database.csv` file in your KiCAD plugin directory
@@ -146,6 +147,9 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 - C12345 (Q2) not in database
 ```
 
+## Tips
+- For components that are inherent to the PCB (test pads, solder jumpers, edge connectors), check the "Exclude from bill of materials" checkbox in their properties. This will prevent them for cluttering the Orphaned BoM file.
+
 
 ## Future Plans
 - Add more distributors (e.g. Mouser)
@@ -155,10 +159,15 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 	- Should also include variant handling (e.g. SOT23 = SOT-23 == SOT23-3 != SOT23-5)
 - Improve model-value comparisons for JLCPCB sanity-check feature
 	- Ignore spaces,periods,dashes,commas,underscores & case when comparing
-	- Maybe just ignore all non alphanumeric characters
-	- E.g. AMS1117-3.3 == AMS1117, B5819WSL == B5819W SL
+		- E.g. "B5819WSL"=="B5819W SL"
+		- Maybe just ignore all non alphanumeric characters
+	- Check if known footprint string is within symbol's footprint string
+		- E.g. "SMD3225-4P" is a subset "Crystal_SMD_3225-4Pin" (ignoring non-alphanum)
 - Improve code formatting and adherence to PEP8
 - Consider respecting the second "output" argument from KiCAD
 - Add a JLCPCB Parts basic part suggestion check
 	- Can be disabled internally using a bool
-	- For non-basic parts, check if a basic part with an equal value+footprint is available
+	- For non-basic parts (or parts not in database), check if a basic part with an equal value+footprint is available	
+- Add graceful error handling for permission denied errors
+	- These usually stem from having an existing BoM file open in an external program
+- Add graceful error handling if KiCAD netlist python module is not installed

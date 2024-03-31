@@ -1,7 +1,7 @@
 # Author: Kennan (Kenneract)
-# Updated: Mar.28.2024
+# Updated: Mar.31.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Mar.28.2024 (V1.0.7)"
+PLUGIN_VERSION = "Mar.31.2024 (V1.0.7)"
 
 """
     @package
@@ -66,6 +66,9 @@ def resolveValue(value:str):
     Given a string with a value & units (e.g. "20mH or 3k3"),
     resolves and returns the raw number (e.g. 0.02 or 3300).
 
+    Output is useful for direct comparisons and hashmaps, not
+    nessesarily for human reading.
+
     Returns None if evaluation fails. Not particularly efficient.
     """
     try:
@@ -111,13 +114,20 @@ class JLCPCBPartData():
     """
     A representation of a JLCPCB part.
     """
-    def __init__(self, partNum, type, value, footprint, edited:int):
+    def __init__(self, partNum, type, value, footprint, edited:int, isBasic):
         self.partNum = partNum
         self.type = type
         self.value = value
         self.rawValue = resolveValue(value)
         self.footprint = footprint
         self.edited = edited
+        self.isBasic = isBasic
+
+    def getIsBasic(self):
+        return self.isBasic
+
+    def getPartNum(self):
+        return self.partNum
 
     def getType(self):
         return self.type
@@ -138,6 +148,12 @@ class JLCPCBPartData():
 
     def getValue(self):
         return self.value
+
+    def getRawValue(self):
+        if (self.rawValue is not None):
+            return self.rawValue
+        else:
+            return self.getValue()
 
     def checkMatchValue(self, inVal):
         """
@@ -224,6 +240,7 @@ class JLCPCBPartDatabase():
                 pType = row["Type"]
                 pVal = row["Value"]
                 pFoot = row["Footprint"]
+                pIsBasic = (row["Basic"] != "0")
                 pEdited = None
                 if ("Edited" in row):
                     pEdited = row["Edited"]
@@ -231,8 +248,43 @@ class JLCPCBPartDatabase():
                     pEdited = int(pEdited)
                     self.lastUpdate = max(self.lastUpdate, pEdited)
                 # Create JLCPCB Part & add to parts list
-                part = JLCPCBPartData(pNum, pType, pVal, pFoot, pEdited)
+                part = JLCPCBPartData(pNum, pType, pVal, pFoot, pEdited, pIsBasic)
                 self.parts.update( {pNum : part} )
+        # Cache a dict of parts based on values & footprints (for quick lookups)
+        self.partsLookup = {}
+        for pNum in self.parts:
+            part = self.parts[pNum]
+            partVal = part.getRawValue()
+            partFoot = part.getFootprint() #TODO: Make this the resolved/raw footprint in the future
+            hash = f"{partVal}{partFoot}"
+            if (hash in self.partsLookup):
+                self.partsLookup[hash].append(part)
+            else:
+                self.partsLookup[hash] = [part]
+
+    def getBasicPartNum(self, value=None, footprint=None, cachedPart:CachedJLCPCBPart=None):
+        """
+        Given a value and a footprint (or a CachedJLCPCBPart), returns
+        a JLCPCB Basic part number with those properties. If cannot find
+        a match, returns None.
+
+        Should have complexity of O(1)
+        """
+        # Load values if a cached part
+        if (cachedPart is not None):
+            value = cachedPart.value
+            footprint = cachedPart.footprint
+        # Clean data & make hash
+        indVal = resolveValue(value)
+        footprint = footprint
+        hash = f"{indVal}{footprint}"
+        # Search for basic part in database
+        if (hash in self.partsLookup):
+            parts = self.partsLookup[hash]
+            for part in parts:
+                if part.getIsBasic():
+                    return part.getPartNum()
+        return None
 
     def getNumItem(self):
         """
@@ -438,6 +490,7 @@ if (len(orphanRows) > 0):
 
 # Run JLCPCB Parts Sanity-Check
 jlcpcbSanityNotes = []
+jlcpcbSanitySuggestions = []
 jlcpcbSanityMissing = []
 numPass = 0
 numFail = 0
@@ -451,15 +504,28 @@ if (jlcDB is not None and len(jlcpcbRows)>0):
         # Get part from JLCPCB database
         part = db.getPart(jlcpcbPart.jlcpcbNum)
         if (part is None):
+            # Note that part is unknown
             numUkn += 1
             jlcpcbSanityMissing.append(f"{jlcpcbPart.jlcpcbNum} ({jlcpcbPart.ref}) not in database")
+            # Check if a known part could be used
+            pNum = db.getBasicPartNum(cachedPart=jlcpcbPart)
+            if (pNum is not None):
+                msg = f"ALT: [{jlcpcbPart.ref}] Part {pNum} (Basic) could replace {jlcpcbPart.jlcpcbNum} (Unknown)"
+                jlcpcbSanitySuggestions.append(msg)
+
             continue
         # Check if database part matches the schematic
         res = part.checkMatchCachedPart(jlcpcbPart)
         if (res == ""):
             numPass += 1
-            continue
+            # For extended parts, check if a suitable Basic part is available
+            if not part.getIsBasic():
+                pNum = db.getBasicPartNum(cachedPart=jlcpcbPart)
+                if (pNum is not None):
+                    msg = f"ALT: [{jlcpcbPart.ref}] Part {pNum} (Basic) could replace {part.partNum} (Extended)"
+                    jlcpcbSanitySuggestions.append(msg)
         else:
+            # Part fails
             numFail += 1
             jlcpcbSanityNotes.append(res)
 
@@ -499,7 +565,7 @@ if (jlcDB is not None):
     reportLines[-1] += f" ({jlcDB.getNumItem()} parts, updated {jlcDB.getLastUpdate(string=True)})"
     reportLines.append("JLCPCB Parts Sanity-Checker Results ")
     reportLines[-1] += f"({numPass} pass, {numFail} suspect, {numUkn} not in database):"
-    sanityMsgs = jlcpcbSanityNotes+jlcpcbSanityMissing
+    sanityMsgs = jlcpcbSanityNotes+jlcpcbSanitySuggestions+jlcpcbSanityMissing
     if (len(sanityMsgs) == 0):
         reportLines.append("(no notes)")
     else:

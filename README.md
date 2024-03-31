@@ -18,11 +18,11 @@ While I made this plugin to fit my specific design process and workflow, I tried
 
 To adapt the plugin to my workflow, I opted to include several distributors and functions in a single plugin, as opposed to having multiple plugins with narrower scopes. This makes the BoM export process simpler and faster, as well as allowing for full coverage of parts - if a symbol is lacking any recognizable distributor part numbers, I want them to be flagged in a different file for manual review (as it could be a mistake).
 
-I added some quality-of-life features such as checking if a component has multiple distributors defined, or identical components have differing part numbers. I also added a "sanity check" for JLCPCB parts, where it compares known details of parts to details of the symbols in the schematic, highlighting any gross mismatches.
+I added some quality-of-life features such as checking if a component has multiple distributors defined, or identical components have differing part numbers. I also added a "sanity check" for JLCPCB parts, where it compares known details of parts to details of the symbols in the schematic, highlighting any gross mismatches. This system can also suggest suitable Basic parts to replace Extended parts.
 
 
 ### Inspiration
-The project was inspired by [Wokwi's JLCPCB BoM Plugin](https://github.com/wokwi/kicad-jlcpcb-bom-plugin) - if you just want a simple plugin for exporting a BoM for JLCPCB's PCB Assembly, that should do the trick as well. (Do note that if you have multiple identical components but assign different JLCPCB numbers, Wokwi's plugin will only use the first one it finds and ignore the rest. This could be an issue if you're using something like X7R and X5R capacitors of identical footprint/value. My plugin does not have this behaviour and keeps both JLCPCB part numbers).
+The project was originally inspired by [Wokwi's JLCPCB BoM Plugin](https://github.com/wokwi/kicad-jlcpcb-bom-plugin) - if you just want a simple plugin for exporting a BoM for JLCPCB's PCB Assembly, that should do the trick as well. (Do note that if you have multiple identical components but assign different JLCPCB numbers, Wokwi's plugin will only use the first one it finds and ignore the rest. This could be an issue if you're using something like X7R and X5R capacitors of identical footprint/value. My plugin does not have this behaviour and keeps both JLCPCB part numbers).
 
 
 ## Features
@@ -36,14 +36,15 @@ The project was inspired by [Wokwi's JLCPCB BoM Plugin](https://github.com/wokwi
 - Highlights potential errors (such as doubled distributor fields or inconsistent part numbers) during BoM generation
 - Details of BoM generation are also logged to a report `txt` file
 - Can perform a "sanity check" of values/footprints for some JLCPCB parts
+	- Can also suggest part replacements when Extended parts can be replaced with a Basic ones
 	- Requires the "JLCPCB_Part_Database.csv" file to be placed in plugin directory
 
 
 ## Installation
 
-This plugin has been verified to work with KiCAD 7.0.8 (Python 3.9.16) on Windows 10 (V1.0.6) and MacOS 13.4 (V1.0.3). It should theoretically work cross-platform with Python 3.7 and above.
+This plugin has been verified to work with KiCAD 7.0.8 (Python 3.9.16) on Windows 10 (V1.0.7) and MacOS 13.4 (V1.0.3). It should theoretically work cross-platform with Python 3.7 and above.
 
-The plugin requires the [KiCAD Netlist Reader module](https://pypi.org/project/kicad-netlist-reader/). This should be installed with KiCAD, but if for some reason it isn't you can launch the "KiCAD Command Prompt" as administrator (located at `/KiCad/7.0/bin/kicad-cmd.bat` on Windows), then invoke `pip install kicad-netlist-reader` to install the module in your KiCAD environment. Alternatively you can manually download the file from the [KiCAD GitHub Repository](https://github.com/KiCad/kicad-source-mirror/blob/master/eeschema/python_scripts/kicad_netlist_reader.py) and place it alongside the plugin file.
+The plugin requires the [KiCAD Netlist Reader module](https://pypi.org/project/kicad-netlist-reader/). This should be installed with KiCAD, but if for some reason it isn't you can launch the "KiCAD Command Prompt" as administrator (located at `/KiCad/7.0/bin/kicad-cmd.bat` on Windows), then invoke `pip install kicad-netlist-reader` to install the module in your KiCAD environment. Alternatively, you can manually download the file from the [KiCAD GitHub Repository](https://github.com/KiCad/kicad-source-mirror/blob/master/eeschema/python_scripts/kicad_netlist_reader.py) and place it alongside the plugin file.
 
 
 ### Installation Steps
@@ -122,8 +123,9 @@ If you're using JLCPCB components and have placed the `JLCPCB_Part_Database.csv`
 # Multi-Distributor BOM Report #
 
 Project Name: Example_Project (has 75 symbols)
-Report Generated: Mar.17.2024 03:59:42
-Plugin Version: Mar.17.2024 (V1.0.0)
+KiCad Version: 7.0.8 (Python 3.9.16)
+Report Generated: Mar.31.2024 13:43:18
+Plugin Version: Mar.28.2024 (V1.0.7)
 
 - - - - - - - - - - - - - - - - - - - - - - - - - 
 
@@ -139,11 +141,12 @@ BoM Generation Notes:
 
 - - - - - - - - - - - - - - - - - - - - - - - - - 
 
-JLCPCB Parts Database File Present: True (111 parts)
+JLCPCB Parts Database File Present: True (354 parts, updated 2024.03.31)
 JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 - [D3]'s value is "PWR_LED (GRN)", expected "Green"
 - [Q2]'s footprint is "SOT-89-3", expected to "SOT-23"
 - [U4]'s value is "MMC5633NJL", expected "MMC5603NJ"
+- ALT: [R3] Part C22843 (Basic) could replace C114680 (Extended)
 - C12345 (Q2) not in database
 ```
 
@@ -154,20 +157,20 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 ## Future Plans
 - Add more distributors (e.g. Mouser)
 - Further develop the JLCPCB Parts Database file
-- Improve footprint comparisons for JLCPCB sanity-check feature
-	- This should include footprint aliases (SMC == DO-214AA, DPAK == TO-252-2, SOT23 == TO236, SOIC16 == SOP16)
+- Improve footprint comparisons for JLCPCB sanity-check feature (resolveFootprint() function)
+	- This should include footprint aliases (SMB == DO-214AA, DPAK == TO-252-2, SOT23 == TO236, SOIC16 == SOP16)
 	- Should also include variant handling (e.g. SOT23 = SOT-23 == SOT23-3 != SOT23-5)
-- Improve model-value comparisons for JLCPCB sanity-check feature
+- Improve model/value comparisons for JLCPCB sanity-check feature
 	- Ignore spaces,periods,dashes,commas,underscores & case when comparing
 		- E.g. "B5819WSL"=="B5819W SL"
 		- Maybe just ignore all non alphanumeric characters
-	- Check if known footprint string is within symbol's footprint string
-		- E.g. "SMD3225-4P" is a subset "Crystal_SMD_3225-4Pin" (ignoring non-alphanum)
+		- Also probably make case-insensitive
+	- For integers, use an exact comparison. For strings, a substring method is likely suitable.
 - Improve code formatting and adherence to PEP8
 - Consider respecting the second "output" argument from KiCAD
-- Add a JLCPCB Parts basic part suggestion check
-	- Can be disabled internally using a bool
-	- For non-basic parts (or parts not in database), check if a basic part with an equal value+footprint is available	
+- Tweak JLCPCB part suggestion check
+	- Adjust the footprint comparison to use the resolveFootprint() system so it is robust with footprint aliases
+		- E.g. Can suggest a SOT457 part as a suitable replacement for a TSOP6 part
 - Add graceful error handling for permission denied errors
 	- These usually stem from having an existing BoM file open in an external program
 - Add graceful error handling if KiCAD netlist python module is not installed

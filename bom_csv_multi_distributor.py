@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
 # Updated: Mar.28.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Mar.28.2024 (V1.0.6)"
+PLUGIN_VERSION = "Mar.28.2024 (V1.0.7)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.6).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.7).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -100,6 +100,12 @@ def resolveValue(value:str):
     except:
         return None
 
+def onlyAlphanum(inStr):
+    """
+    Given a string, returns the string with all =
+    non-alphanumeric characters removed.
+    """
+    return "".join(ch for ch in inStr if ch.isalnum())
 
 class JLCPCBPartData():
     """
@@ -147,6 +153,9 @@ class JLCPCBPartData():
         if (rawVal is None):
             rawVal = self.value
         # Compare
+        #rawVal = onlyAlphanum(str(rawVal)).upper()
+        #cleanVal = onlyAlphanum(str(cleanVal)).upper()
+        #print(f"{rawVal} in {cleanVal}")
         return str(rawVal) in str(cleanVal)
 
     def getFootprint(self):
@@ -162,8 +171,8 @@ class JLCPCBPartData():
         # Process incoming footprint
         cleanFoot = inFoot.split(":")[-1]
         # Remove special chars
-        cleanFoot = cleanFoot.replace("-","").lower()
-        selfFoot = self.footprint.replace("-","").lower()
+        cleanFoot = onlyAlphanum(cleanFoot).upper()
+        selfFoot = onlyAlphanum(self.footprint).upper()
         # Compare
         return selfFoot in cleanFoot
 

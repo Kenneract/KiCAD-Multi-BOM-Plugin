@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
-# Updated: Mar.31.2024
+# Updated: Apr.03.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Mar.31.2024 (V1.0.7)"
+PLUGIN_VERSION = "Apr.03.2024 (V1.0.8)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.7).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.8).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -37,10 +37,14 @@ PLUGIN_VERSION = "Mar.31.2024 (V1.0.7)"
     python "pathToFile/bom_csv_multi_distributor.py" "%I"
 """
 
+import time
+START_TIME = time.time() #script start time
+
 import kicad_netlist_reader
 import csv, sys
 from os import path, remove
 from dataclasses import dataclass
+
 
 JLCPCB_PART_FILE = "JLCPCB_Part_Database.csv"
 
@@ -535,12 +539,14 @@ reportLines = []
 kVer = net.getTool().split(" ")[-1]
 pVer = sys.version_info
 pVer = f"{pVer.major}.{pVer.minor}.{pVer.micro}"
+execTime = f"{(time.time() - START_TIME) * 1000:.1f}"
 
 reportLines.append("# Multi-Distributor BoM Report #\n")
 reportLines.append(f"Project Name: {projName} (has {len(net.components)} symbols)")
 reportLines.append(f"KiCad Version: {kVer} (Python {pVer})")
 reportLines.append(f"Report Generated: {net.getDate()}")
-reportLines.append(f"Plugin Version: {PLUGIN_VERSION}\n")
+reportLines.append(f"Plugin Version: {PLUGIN_VERSION}")
+reportLines.append(f"Execution Time: {execTime}ms\n")
 reportLines.append("- "*25 + "\n")
 
 distribData = [("JLCPCB",jlcpcbRows), ("Digikey",digikeyRows),

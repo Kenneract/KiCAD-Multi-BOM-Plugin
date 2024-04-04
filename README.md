@@ -157,7 +157,8 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 ## Future Plans
 - Add more distributors (e.g. Mouser)
 - Further develop the JLCPCB Parts Database file
-- Improve footprint comparisons for JLCPCB sanity-check feature (resolveFootprint() function)
+	- Depending on performance with more parts, maybe make a "lite" version with only Basic parts
+- Improve footprint comparisons for JLCPCB sanity-check feature (normalizeFootprint() function)
 	- This should include footprint aliases (SMB == DO-214AA, DPAK == TO-252-2, SOT23 == TO236, SOIC16 == SOP16)
 	- Should also include variant handling (e.g. SOT23 = SOT-23 == SOT23-3 != SOT23-5)
 - Improve model/value comparisons for JLCPCB sanity-check feature
@@ -169,8 +170,9 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 - Improve code formatting and adherence to PEP8
 - Consider respecting the second "output" argument from KiCAD
 - Tweak JLCPCB part suggestion check
-	- Adjust the footprint comparison to use the resolveFootprint() system so it is robust with footprint aliases
+	- Adjust the footprint comparison to use the normalizeFootprint() system so it is robust with footprint aliases
 		- E.g. Can suggest a SOT457 part as a suitable replacement for a TSOP6 part
 - Add graceful error handling for permission denied errors
 	- These usually stem from having an existing BoM file open in an external program
 - Add graceful error handling if KiCAD netlist python module is not installed
+- For the JLCPCB suggestion system, have the message differentiate between (Basic) and (Preferred) parts.

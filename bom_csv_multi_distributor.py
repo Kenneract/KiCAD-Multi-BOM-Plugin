@@ -65,13 +65,13 @@ class CachedJLCPCBPart:
     value: str
     footprint: str
 
-def resolveValue(value:str):
+def normalizeValue(value:str):
     """
     Given a string with a value & units (e.g. "20mH or 3k3"),
     resolves and returns the raw number (e.g. 0.02 or 3300).
 
-    Output is useful for direct comparisons and hashmaps, not
-    nessesarily for human reading.
+    Result is normalized, so is useful for direct comparisons and
+    hashmaps, not nessesarily for human reading.
 
     Returns None if evaluation fails. Not particularly efficient.
     """
@@ -122,7 +122,7 @@ class JLCPCBPartData():
         self.partNum = partNum
         self.type = type
         self.value = value
-        self.rawValue = resolveValue(value)
+        self.rawValue = normalizeValue(value)
         self.footprint = footprint
         self.edited = edited
         self.isBasic = isBasic
@@ -165,7 +165,7 @@ class JLCPCBPartData():
         this part. Performs some processing.
         """
         # Process incoming value
-        cleanVal = resolveValue(inVal)
+        cleanVal = normalizeValue(inVal)
         if (cleanVal is None):
             cleanVal = inVal
         # Ensure have raw value
@@ -279,7 +279,7 @@ class JLCPCBPartDatabase():
             value = cachedPart.value
             footprint = cachedPart.footprint
         # Clean data & make hash
-        indVal = resolveValue(value)
+        indVal = normalizeValue(value)
         footprint = footprint
         hash = f"{indVal}{footprint}"
         # Search for basic part in database

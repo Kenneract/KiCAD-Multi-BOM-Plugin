@@ -42,7 +42,7 @@ The project was originally inspired by [Wokwi's JLCPCB BoM Plugin](https://githu
 
 ## Installation
 
-This plugin has been verified to work with KiCAD 7.0.8 (Python 3.9.16) on Windows 10 (V1.0.7) and MacOS 13.4 (V1.0.3). It should theoretically work cross-platform with Python 3.7 and above.
+This plugin has been verified to work with KiCAD 7.0.8 (Python 3.9.16) on Windows 10 and MacOS 13.4 (tested V1.0.3). It should theoretically work cross-platform with Python 3.7 and above.
 
 The plugin requires the [KiCAD Netlist Reader module](https://pypi.org/project/kicad-netlist-reader/). This should be installed with KiCAD, but if for some reason it isn't you can launch the "KiCAD Command Prompt" as administrator (located at `/KiCad/7.0/bin/kicad-cmd.bat` on Windows), then invoke `pip install kicad-netlist-reader` to install the module in your KiCAD environment. Alternatively, you can manually download the file from the [KiCAD GitHub Repository](https://github.com/KiCad/kicad-source-mirror/blob/master/eeschema/python_scripts/kicad_netlist_reader.py) and place it alongside the plugin file.
 
@@ -115,6 +115,7 @@ If you're using JLCPCB components and have placed the `JLCPCB_Part_Database.csv`
 - "NOT IN DATABASE" means the JLCPCB part is not in the part database and thus cannot be evaluated
 	- You can manually add parts to the database file to fix this
 
+Note: As I add more parts to the `JLCPCB_Part_Database.csv` file and it grows in size, the impact on loading time will become more significant. To reduce these effects the database is cached (pickled) after the first execution. This means the first run of the plugin will be slower than subsequent runs. The cached database will also be re-generated any time the plugin or database CSV are updated.
 
 ### Sample Output:
 

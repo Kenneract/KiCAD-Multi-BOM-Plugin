@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
-# Updated: Apr.08.2024
+# Updated: Apr.09.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Apr.08.2024 (V1.0.8)"
+PLUGIN_VERSION = "Apr.09.2024 (V1.0.9)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.8).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.9).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -44,9 +44,12 @@ import kicad_netlist_reader
 import csv, sys
 from os import path, remove
 from dataclasses import dataclass
+import hashlib, pickle
 
 
 JLCPCB_PART_FILE = "JLCPCB_Part_Database.csv"
+JLCPCB_PART_PKL_FILE = "CachedJLCPCB.pkl"
+DO_PICKLE_JLCPCB_DB = True
 
 JLCPCB_FIELDS = ("LCSC", "LCSC Part", "JLCPCB")
 DIGIKEY_FIELDS = ("Digikey", "Digi-Key", "Digi-Key_PN")
@@ -103,6 +106,21 @@ def onlyAlphanum(inStr):
     non-alphanumeric characters removed.
     """
     return "".join(ch for ch in inStr if ch.isalnum())
+
+
+def computeSHA1(source:str):
+    """
+    Given the path to a source file, computes and
+    returns the SHA1 hash of the file.
+    """
+    sha1 = hashlib.sha1()
+    with open(source, "rb") as f:
+        while True:
+            chunk = f.read(8192) #8kB chunks
+            if not chunk:
+                break
+            sha1.update(chunk)
+    return sha1.hexdigest()
 
 class JLCPCBPartData():
     """
@@ -216,10 +234,13 @@ class JLCPCBPartDatabase():
     """
     A database of JLCPCB parts.
     """
-    def __init__(self, source:str):
+    def __init__(self, source:str, dbHash=None):
         """
         Initializes the database & loads from disk.
         """
+        self.srcHash = dbHash or computeSHA1(source)
+        self.srcPluginVer = PLUGIN_VERSION
+
         self.parts = {}
         self.lastUpdate = 0 # YYYYMMDD of last update
         # Load data from database
@@ -358,12 +379,40 @@ def deleteFile(file:str):
     except FileNotFoundError:
         pass
 
+def loadJLCPCBDatabase(dbFile, pklFile):
+    """
+    Reads the JLCPCB Parts Database file from disk and returns a
+    JLCPCBPartDatabase object.
+
+    Can read/write a cached (pickled) version of
+    JLCPCBPartDatabase for improved repeat performance.
+
+    Returns None if database file is not present
+    """
+    jlcDB = None
+    if path.exists(dbFile):
+        dbHash = computeSHA1(dbFile)
+        if DO_PICKLE_JLCPCB_DB and path.exists(pklFile):
+            # Pickled datbase exists, check if outdated
+            with open(pklFile, "rb") as f:
+                jlcDB = pickle.load(f)
+                if (jlcDB.srcHash == dbHash):
+                    if (jlcDB.srcPluginVer == PLUGIN_VERSION):
+                        # Not outdated; we good
+                        return jlcDB
+        # Pickle is outdated or not present; load CSV
+        jlcDB = JLCPCBPartDatabase(dbFile, dbHash=dbHash)
+        with open(pklFile, "wb") as f:
+            pickle.dump(jlcDB, f)
+    return jlcDB
+
 
 # Resolve environment data
 projName = path.basename(sys.argv[1]).strip(".xml")
 projDir = path.dirname(sys.argv[1])
 pluginDir = path.dirname(path.abspath(__file__))
 jlcpcbDataFile = path.join(pluginDir, JLCPCB_PART_FILE)
+jlcpcbDataPklFile = path.join(pluginDir, JLCPCB_PART_PKL_FILE)
 
 # Delete existing BoM / report files
 reportFile = path.join(projDir, REPORT_FILE.format(projName))
@@ -379,9 +428,8 @@ deleteFile(orphanFile)
 TIMES.update( {"jlcLoadStart": time.time()} )
 
 # Load JLCPCB database
-jlcDB = None
-if path.exists(jlcpcbDataFile):
-    jlcDB = JLCPCBPartDatabase(jlcpcbDataFile)
+jlcDB = loadJLCPCBDatabase(jlcpcbDataFile, jlcpcbDataPklFile)
+
 
 TIMES.update( {"jlcLoadDone": time.time()} )
 

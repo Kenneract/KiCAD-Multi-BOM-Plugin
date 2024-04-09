@@ -1,7 +1,7 @@
 # Author: Kennan (Kenneract)
-# Updated: Apr.03.2024
+# Updated: Apr.08.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Apr.03.2024 (V1.0.8)"
+PLUGIN_VERSION = "Apr.08.2024 (V1.0.8)"
 
 """
     @package
@@ -38,7 +38,7 @@ PLUGIN_VERSION = "Apr.03.2024 (V1.0.8)"
 """
 
 import time
-START_TIME = time.time() #script start time
+TIMES = {"start": time.time()} #script start time
 
 import kicad_netlist_reader
 import csv, sys
@@ -56,7 +56,6 @@ DIGIKEY_BOM_FILE = "{0}_BOM_Digikey.csv"
 ORPHAN_BOM_FILE = "{0}_BOM_Orphaned.csv"
 REPORT_FILE = "{0}_BOM_Report.txt"
 
-
 @dataclass
 class CachedJLCPCBPart:
     # For storing data about components found in the schematic
@@ -65,7 +64,7 @@ class CachedJLCPCBPart:
     value: str
     footprint: str
 
-def normalizeValue(value:str):
+def normalizeValue(rawValue:str):
     """
     Given a string with a value & units (e.g. "20mH or 3k3"),
     resolves and returns the raw number (e.g. 0.02 or 3300).
@@ -74,38 +73,29 @@ def normalizeValue(value:str):
     hashmaps, not nessesarily for human reading.
 
     Returns None if evaluation fails. Not particularly efficient.
+    (Approx 9% faster than previous implementation)
     """
+    MAGS = {"p":-12, "n":-9, "u":-6, "µ":-6,
+            "m":-3, "k":3, "M":6, "G":9}
+
+    # Ensure all decimal places are "."
+    rawValue = rawValue.replace(",",".")
+
+    # Isolate value and determine magnitude
+    val, mag = "", 0
+    for c in rawValue:
+        if (c.isdigit() or c == "."):
+            val += c
+        elif (not mag and c in MAGS):
+            mag = MAGS[c]
+
+    # Calculate result
     try:
-        magnitudes = {"p":-12, "n":-9, "u":-6, "µ":-6, "m":-3, "k":3, "M":6, "G":9}
-        # Remove units
-        val = ""
-        value = value.replace(",",".") #dot for decimal place
-        for c in value:
-            if (c in magnitudes or c.isdigit() or c == "."):
-                val += c
-        
-        # Interpret magnitude
-        mag = 0
-        for c in val:
-            if c in magnitudes:
-                mag = magnitudes[c]
-                break
-
-        # Isolate raw number
-        value = ""
-        decDone = False
-        for c in val:
-            if (c.isdigit()):
-                value += c
-            elif (not decDone and (c == "." or c in magnitudes)):
-                value += "."
-                decDone = True
-        value = float(value)
-
-        # Calculate result
-        return round(value * (10**mag), 15)
-    except:
+        val = float(val)
+        return round(val * (10**mag), 15)
+    except ValueError:
         return None
+
 
 def onlyAlphanum(inStr):
     """
@@ -143,10 +133,7 @@ class JLCPCBPartData():
         Performs some text processing.
         """
         # Process incoming type
-        cleanType = ""
-        for c in inType:
-            if (c.isalpha()):
-                cleanType += c
+        cleanType = "".join(c for c in inType if c.isalpha())
         # Compare
         return self.type.lower() == cleanType.lower()
 
@@ -245,26 +232,38 @@ class JLCPCBPartDatabase():
                 pVal = row["Value"]
                 pFoot = row["Footprint"]
                 pIsBasic = (row["Basic"] != "0")
-                pEdited = None
-                if ("Edited" in row):
-                    pEdited = row["Edited"]
-                if (pEdited is not None and len(pEdited)>0):
+                pEdited = row["Edited"]
+                try:
                     pEdited = int(pEdited)
                     self.lastUpdate = max(self.lastUpdate, pEdited)
+                except ValueError:
+                    pass
                 # Create JLCPCB Part & add to parts list
                 part = JLCPCBPartData(pNum, pType, pVal, pFoot, pEdited, pIsBasic)
                 self.parts.update( {pNum : part} )
-        # Cache a dict of parts based on values & footprints (for quick lookups)
-        self.partsLookup = {}
+        # Cache parts dict
+        self.partsLookup = self.generatePartCache()
+        
+
+    def generatePartCache(self):
+        """
+        Generate a dictionary of parts based on values & footprints.
+
+        Allows for quick looksups with O(1) complexity.
+
+        Consumes like 20% of runtime
+        """
+        cache = {}
         for pNum in self.parts:
             part = self.parts[pNum]
             partVal = part.getRawValue()
             partFoot = part.getFootprint() #TODO: Make this the resolved/raw footprint in the future
             hash = f"{partVal}{partFoot}"
-            if (hash in self.partsLookup):
-                self.partsLookup[hash].append(part)
+            if (hash in cache):
+                cache[hash].append(part)
             else:
-                self.partsLookup[hash] = [part]
+                cache[hash] = [part]
+        return cache
 
     def getBasicPartNum(self, value=None, footprint=None, cachedPart:CachedJLCPCBPart=None):
         """
@@ -376,10 +375,15 @@ deleteFile(jlcpcbFile)
 deleteFile(digikeyFile)
 deleteFile(orphanFile)
 
+
+TIMES.update( {"jlcLoadStart": time.time()} )
+
 # Load JLCPCB database
 jlcDB = None
 if path.exists(jlcpcbDataFile):
     jlcDB = JLCPCBPartDatabase(jlcpcbDataFile)
+
+TIMES.update( {"jlcLoadDone": time.time()} )
 
 # Read KiCAD netlist
 net = kicad_netlist_reader.netlist(sys.argv[1])
@@ -467,6 +471,8 @@ for group in net.groupComponents():
         orphanRows.append([value+" "+desc, ",".join(orphanRefs), footprint])
 
 
+TIMES.update( {"bomDone": time.time()} )
+
 # Write row data to CSV BOM files
 
 # JLCPCB
@@ -492,6 +498,8 @@ if (len(orphanRows) > 0):
         for row in orphanRows:
             out.writerow(row)
 
+TIMES.update( {"sanityStart": time.time()} )
+
 # Run JLCPCB Parts Sanity-Check
 jlcpcbSanityNotes = []
 jlcpcbSanitySuggestions = []
@@ -500,19 +508,16 @@ numPass = 0
 numFail = 0
 numUkn = 0
 if (jlcDB is not None and len(jlcpcbRows)>0):
-    # Load parts database
-    db = JLCPCBPartDatabase(jlcpcbDataFile)
-
     # Iterate through all parts
     for jlcpcbPart in jlcpcbItems:
         # Get part from JLCPCB database
-        part = db.getPart(jlcpcbPart.jlcpcbNum)
+        part = jlcDB.getPart(jlcpcbPart.jlcpcbNum)
         if (part is None):
             # Note that part is unknown
             numUkn += 1
             jlcpcbSanityMissing.append(f"{jlcpcbPart.jlcpcbNum} ({jlcpcbPart.ref}) not in database")
             # Check if a known part could be used
-            pNum = db.getBasicPartNum(cachedPart=jlcpcbPart)
+            pNum = jlcDB.getBasicPartNum(cachedPart=jlcpcbPart)
             if (pNum is not None):
                 msg = f"ALT: [{jlcpcbPart.ref}] Part {pNum} (Basic) could replace {jlcpcbPart.jlcpcbNum} (Unknown)"
                 jlcpcbSanitySuggestions.append(msg)
@@ -524,7 +529,7 @@ if (jlcDB is not None and len(jlcpcbRows)>0):
             numPass += 1
             # For extended parts, check if a suitable Basic part is available
             if not part.getIsBasic():
-                pNum = db.getBasicPartNum(cachedPart=jlcpcbPart)
+                pNum = jlcDB.getBasicPartNum(cachedPart=jlcpcbPart)
                 if (pNum is not None):
                     msg = f"ALT: [{jlcpcbPart.ref}] Part {pNum} (Basic) could replace {part.partNum} (Extended)"
                     jlcpcbSanitySuggestions.append(msg)
@@ -533,20 +538,25 @@ if (jlcDB is not None and len(jlcpcbRows)>0):
             numFail += 1
             jlcpcbSanityNotes.append(res)
 
+TIMES.update( {"sanityDone": time.time()} )
 
 # Generate report
 reportLines = []
 kVer = net.getTool().split(" ")[-1]
 pVer = sys.version_info
 pVer = f"{pVer.major}.{pVer.minor}.{pVer.micro}"
-execTime = f"{(time.time() - START_TIME) * 1000:.1f}"
+execTime = (time.time() - TIMES['start']) * 1000
+jlcLoadTime = (TIMES["jlcLoadDone"] - TIMES["jlcLoadStart"])*1000
+bomGenTime = (TIMES["bomDone"] - TIMES["jlcLoadDone"])*1000
+jlcCheckTime = (TIMES["sanityDone"] - TIMES["sanityStart"])*1000
+
 
 reportLines.append("# Multi-Distributor BoM Report #\n")
 reportLines.append(f"Project Name: {projName} (has {len(net.components)} symbols)")
 reportLines.append(f"KiCad Version: {kVer} (Python {pVer})")
 reportLines.append(f"Report Generated: {net.getDate()}")
 reportLines.append(f"Plugin Version: {PLUGIN_VERSION}")
-reportLines.append(f"Execution Time: {execTime}ms\n")
+reportLines.append(f"Execution Time: {execTime:.0f}ms ({jlcLoadTime:.0f}ms JLoad, {bomGenTime:.0f}ms BoM, {jlcCheckTime:.0f}ms JChek)\n")
 reportLines.append("- "*25 + "\n")
 
 distribData = [("JLCPCB",jlcpcbRows), ("Digikey",digikeyRows),

@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
-# Updated: Apr.09.2024
+# Updated: Apr.11.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Apr.09.2024 (V1.0.9)"
+PLUGIN_VERSION = "Apr.11.2024 (V1.0.10)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.9).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.10).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -44,12 +44,13 @@ import kicad_netlist_reader
 import csv, sys
 from os import path, remove
 from dataclasses import dataclass
-import hashlib, pickle
+import hashlib, pickle, gc
 
+DO_PICKLE_JLCPCB_DB = True
+DO_DISABLE_GC = True
 
 JLCPCB_PART_FILE = "JLCPCB_Part_Database.csv"
 JLCPCB_PART_PKL_FILE = "CachedJLCPCB.pkl"
-DO_PICKLE_JLCPCB_DB = True
 
 JLCPCB_FIELDS = ("LCSC", "LCSC Part", "JLCPCB")
 DIGIKEY_FIELDS = ("Digikey", "Digi-Key", "Digi-Key_PN")
@@ -428,8 +429,9 @@ deleteFile(orphanFile)
 TIMES.update( {"jlcLoadStart": time.time()} )
 
 # Load JLCPCB database
+gc.disable() # Improves pickle performance
 jlcDB = loadJLCPCBDatabase(jlcpcbDataFile, jlcpcbDataPklFile)
-
+if (not DO_DISABLE_GC): gc.enable() # Sacrifice memory for performance
 
 TIMES.update( {"jlcLoadDone": time.time()} )
 

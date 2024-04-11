@@ -117,6 +117,16 @@ If you're using JLCPCB components and have placed the `JLCPCB_Part_Database.csv`
 
 Note: As I add more parts to the `JLCPCB_Part_Database.csv` file and it grows in size, the impact on loading time will become more significant. To reduce these effects the database is cached (pickled) after the first execution. This means the first run of the plugin will be slower than subsequent runs. The cached database will also be re-generated any time the plugin or database CSV are updated.
 
+### Performance Settings
+
+By default the plugin is optimized for the fastest execution time. Some optimizations could cause issues in niche cases, so certain behaviour can be changed by tweaking the global constants in the plugin:
+
+| Constant              | Default | Behaviour         |
+| --------------------- | ------- | ----------------- |
+| `DO_PICKLE_JLCPCB_DB` | `True`  | Pickles JLCPCB database for faster repeat loading |
+| `DO_DISABLE_GC`       | `True`  | Disables garbage collector to favour performance at cost of RAM usage |
+
+
 ### Sample Output:
 
 `Example_Project_BOM_Report.txt:`
@@ -125,8 +135,9 @@ Note: As I add more parts to the `JLCPCB_Part_Database.csv` file and it grows in
 
 Project Name: Example_Project (has 75 symbols)
 KiCad Version: 7.0.8 (Python 3.9.16)
-Report Generated: Mar.31.2024 13:43:18
-Plugin Version: Mar.28.2024 (V1.0.7)
+Report Generated: Apr.11.2024 13:43:18
+Plugin Version: Apr.11.2024 (V1.0.10)
+Execution Time: 23ms
 
 - - - - - - - - - - - - - - - - - - - - - - - - - 
 
@@ -152,7 +163,7 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 ```
 
 ## Tips
-- For components that are inherent to the PCB (test pads, solder jumpers, edge connectors), check the "Exclude from bill of materials" checkbox in their properties. This will prevent them for cluttering the Orphaned BoM file.
+- For components that are inherent to the PCB (mounting holes, test pads, solder jumpers, edge connectors), check the "Exclude from bill of materials" checkbox in their properties. This will prevent them for cluttering the Orphaned BoM file.
 
 
 ## Future Plans
@@ -176,4 +187,6 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 - Add graceful error handling for permission denied errors
 	- These usually stem from having an existing BoM file open in an external program
 - Add graceful error handling if KiCAD netlist python module is not installed
+- Consider using arguments/envs to configure features (DB pickling, etc)
+- Optimize JLCPCBPartDatabase & JLCPCBPartData classes for better serialization
 - For the JLCPCB suggestion system, have the message differentiate between (Basic) and (Preferred) parts.

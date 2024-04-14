@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
-# Updated: Apr.11.2024
+# Updated: Apr.13.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Apr.11.2024 (V1.0.10)"
+PLUGIN_VERSION = "Apr.13.2024 (V1.0.11)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.10).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.11).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -127,17 +127,23 @@ class JLCPCBPartData():
     """
     A representation of a JLCPCB part.
     """
-    def __init__(self, partNum, type, value, footprint, edited:int, isBasic):
+    def __init__(self, partNum, type, value, footprint, edited:int, tier:str):
         self.partNum = partNum
         self.type = type
         self.value = value
-        self.rawValue = normalizeValue(value)
-        self.footprint = footprint
+        self.normalValue = normalizeValue(value)
+        self.footprint = footprint # TODO: Add normalized footprint too
         self.edited = edited
-        self.isBasic = isBasic
+        self.partTier = tier #[B]asic/[P]referred/[E]xtended
 
     def getIsBasic(self):
-        return self.isBasic
+        return self.partTier == "B"
+
+    def getIsPreferred(self):
+        return self.partTier == "P"
+
+    def getIsExtended(self):
+        return self.partTier == "E"
 
     def getPartNum(self):
         return self.partNum
@@ -159,9 +165,9 @@ class JLCPCBPartData():
     def getValue(self):
         return self.value
 
-    def getRawValue(self):
-        if (self.rawValue is not None):
-            return self.rawValue
+    def getNormalizedValue(self):
+        if (self.normalValue is not None):
+            return self.normalValue
         else:
             return self.getValue()
 
@@ -175,7 +181,7 @@ class JLCPCBPartData():
         if (cleanVal is None):
             cleanVal = inVal
         # Ensure have raw value
-        rawVal = self.rawValue
+        rawVal = self.normalValue
         if (rawVal is None):
             rawVal = self.value
         # Compare
@@ -253,7 +259,7 @@ class JLCPCBPartDatabase():
                 pType = row["Type"]
                 pVal = row["Value"]
                 pFoot = row["Footprint"]
-                pIsBasic = (row["Basic"] != "0")
+                pTier = row["Tier"]
                 pEdited = row["Edited"]
                 try:
                     pEdited = int(pEdited)
@@ -261,7 +267,7 @@ class JLCPCBPartDatabase():
                 except ValueError:
                     pass
                 # Create JLCPCB Part & add to parts list
-                part = JLCPCBPartData(pNum, pType, pVal, pFoot, pEdited, pIsBasic)
+                part = JLCPCBPartData(pNum, pType, pVal, pFoot, pEdited, pTier)
                 self.parts.update( {pNum : part} )
         # Cache parts dict
         self.partsLookup = self.generatePartCache()
@@ -278,8 +284,8 @@ class JLCPCBPartDatabase():
         cache = {}
         for pNum in self.parts:
             part = self.parts[pNum]
-            partVal = part.getRawValue()
-            partFoot = part.getFootprint() #TODO: Make this the resolved/raw footprint in the future
+            partVal = part.getNormalizedValue()
+            partFoot = part.getFootprint() #TODO: Make this a normalized footprint
             hash = f"{partVal}{partFoot}"
             if (hash in cache):
                 cache[hash].append(part)
@@ -290,8 +296,11 @@ class JLCPCBPartDatabase():
     def getBasicPartNum(self, value=None, footprint=None, cachedPart:CachedJLCPCBPart=None):
         """
         Given a value and a footprint (or a CachedJLCPCBPart), returns
-        a JLCPCB Basic part number with those properties. If cannot find
-        a match, returns None.
+        a JLCPCB Basic part number with those properties. Will return
+        a suitable Preferred part if no Basic one is available.
+
+        Returns tuple of (partNum, partTier), where tier will either
+        be "B" or "P". If cannot find a match, returns (None, None).
 
         Should have complexity of O(1)
         """
@@ -301,15 +310,21 @@ class JLCPCBPartDatabase():
             footprint = cachedPart.footprint
         # Clean data & make hash
         indVal = normalizeValue(value)
-        footprint = footprint
+        footprint = footprint  #TODO: Make sure this gets normalized
         hash = f"{indVal}{footprint}"
         # Search for basic part in database
+        prefPart = (None,None)
         if (hash in self.partsLookup):
             parts = self.partsLookup[hash]
             for part in parts:
                 if part.getIsBasic():
-                    return part.getPartNum()
-        return None
+                    # Basic found, return immediately
+                    return (part.getPartNum(), "B")
+                elif part.getIsPreferred():
+                    # Preferred found, save as last resort
+                    prefPart = (part.getPartNum(), "P")
+        # Return preferred part (if found) as last resort
+        return prefPart
 
     def getNumItem(self):
         """
@@ -566,25 +581,27 @@ if (jlcDB is not None and len(jlcpcbRows)>0):
             # Note that part is unknown
             numUkn += 1
             jlcpcbSanityMissing.append(f"{jlcpcbPart.jlcpcbNum} ({jlcpcbPart.ref}) not in database")
-            # Check if a known part could be used
-            pNum = jlcDB.getBasicPartNum(cachedPart=jlcpcbPart)
+            # Check if a known Basic/Preferred part could be used
+            pNum,tier = jlcDB.getBasicPartNum(cachedPart=jlcpcbPart)
             if (pNum is not None):
-                msg = f"ALT: [{jlcpcbPart.ref}] Part {pNum} (Basic) could replace {jlcpcbPart.jlcpcbNum} (Unknown)"
+                tier = "Basic" if tier=="B" else "Preferred"
+                msg = f"ALT: [{jlcpcbPart.ref}] Part {pNum} ({tier}) could replace {jlcpcbPart.jlcpcbNum} (Unknown)"
                 jlcpcbSanitySuggestions.append(msg)
-
             continue
+
         # Check if database part matches the schematic
         res = part.checkMatchCachedPart(jlcpcbPart)
         if (res == ""):
             numPass += 1
-            # For extended parts, check if a suitable Basic part is available
-            if not part.getIsBasic():
-                pNum = jlcDB.getBasicPartNum(cachedPart=jlcpcbPart)
+            # For extended parts, check if a suitable Basic/Preferred part is available
+            if part.getIsExtended():
+                pNum,tier = jlcDB.getBasicPartNum(cachedPart=jlcpcbPart)
                 if (pNum is not None):
-                    msg = f"ALT: [{jlcpcbPart.ref}] Part {pNum} (Basic) could replace {part.partNum} (Extended)"
+                    tier = "Basic" if tier=="B" else "Preferred"
+                    msg = f"ALT: [{jlcpcbPart.ref}] Part {pNum} ({tier}) could replace {part.partNum} (Extended)"
                     jlcpcbSanitySuggestions.append(msg)
         else:
-            # Part fails
+            # Part does not match (don't bother checking for replacements)
             numFail += 1
             jlcpcbSanityNotes.append(res)
 

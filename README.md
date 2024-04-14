@@ -189,4 +189,6 @@ JLCPCB Parts Sanity-Checker (33 pass, 3 suspect, 1 not in database):
 - Add graceful error handling if KiCAD netlist python module is not installed
 - Consider using arguments/envs to configure features (DB pickling, etc)
 - Optimize JLCPCBPartDatabase & JLCPCBPartData classes for better serialization
-- For the JLCPCB suggestion system, have the message differentiate between (Basic) and (Preferred) parts.
+- Switch JLCPCB CSV database to having seperate columns for "Value" and "Model" of parts.
+	- This is because, when normalizing values, some part model numbers (e.g. STM32F103C8T6) are actually converted to numeric values. This is undesired behaviour and could lead to confusion.
+	- This also means the part hash system may need to be overhauled (or just use (Model or Value)+footprint, so use Model first, then Value if not defined)

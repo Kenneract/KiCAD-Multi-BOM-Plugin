@@ -1,11 +1,11 @@
 # Author: Kennan (Kenneract)
 # Updated: Apr.13.2024
 # API Reference: https://github.com/janelia-pypi/kicad_netlist_reader/blob/main/kicad_netlist_reader/kicad_netlist_reader.py
-PLUGIN_VERSION = "Apr.13.2024 (V1.0.11)"
+PLUGIN_VERSION = "Oct.28.2024 (V1.0.12)"
 
 """
     @package
-    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.11).
+    Written by Kennan for KiCAD 7.0 and Python 3.7+ (Version 1.0.12).
     
     Generates multiple CSV BoM files for each component distributor you plan
     to purchase from, based on "part number" fields on each symbol. Components
@@ -19,7 +19,7 @@ PLUGIN_VERSION = "Apr.13.2024 (V1.0.11)"
     If using JLCPCB part numbers, the plugin can perform a "sanity-check" of
     values/footprints for relevant components by using the provided
     "JLCPCB_Part_Database.csv" file (must be placed in your plugin directory).
-	
+    
     CURRENTLY SUPPORTS:
 
     > JLCPCB
@@ -32,7 +32,7 @@ PLUGIN_VERSION = "Apr.13.2024 (V1.0.11)"
         - Output BoM can be used with Digikey's Parts List Manager
         - Columns: "Customer Reference", "Note", "Reference Designator",
                     "Footprint", "Digi-Key Part Number", "Quantity"
-	
+    
     Command Line:
     python "pathToFile/bom_csv_multi_distributor.py" "%I"
 """
@@ -45,6 +45,8 @@ import csv, sys
 from os import path, remove
 from dataclasses import dataclass
 import hashlib, pickle, gc
+from re import match
+
 
 DO_PICKLE_JLCPCB_DB = True
 DO_DISABLE_GC = True
@@ -360,6 +362,18 @@ class JLCPCBPartDatabase():
         return None
 
 
+def isValidRefDes(refDes:str):
+    """
+    Given a string, returns True if it is a valid reference
+    designator string (e.g. "U10" or "R3").
+
+    A valid designator is defined as a string that begins with
+    1-2 letters (case-insensitive), followed by a number. Leading
+    zeroes are not considered valid (e.g. "R01" is invalid).
+    """
+    pattern = r'^[A-Z]{1,2}[1-9][0-9]*$'
+    return bool(match(pattern, refDes.upper()))
+
 def checkFields(component, fields:tuple, ignoreCase:bool=True):
     """
     Checks if the given KiCAD component has any of the
@@ -480,6 +494,12 @@ for group in net.groupComponents():
 
         distributors = [(jlcpcbPartNum, jlcpcbPartRefs),
                         (digikeyPartNum, digikeyPartRefs)]
+
+        # Check if ref designator is valid (otherwise can yield invalid CSV outputs)
+        refDes = comp.getRef()
+        if not isValidRefDes(refDes):
+            msg = f"WARN: [{refDes}] does not have a standard reference designator"
+            warnings.append(msg)
 
         # Record REF to parts dictionary for appropriate distributor
         orphaned = True
